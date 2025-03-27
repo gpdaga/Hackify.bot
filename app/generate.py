@@ -1,29 +1,39 @@
-from openai import AsyncOpenAI
-from dotenv import load_dotenv
-import os
+async def ai_generate(text: str) -> str:
+    prompt = "Ты — ассистент Hackify. Отвечай кратко и по делу."
+    print(f"[DEBUG] Получен запрос: {text}")  # Логирование входящего запроса
 
-load_dotenv()
+    try:
 
-ai_token = os.getenv("AI_TOKEN")
+        async with AsyncClient() as client:
+            direct_response = await client.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {config.DEEPSEEK_API_KEY}"},
+                json={
+                    "model": "deepseek-chat",
+                    "messages": [{"role": "user", "content": text}],
+                    "temperature": 0.7
+                },
+                timeout=30.0
+            )
+            print(f"[DEBUG] Ответ DeepSeek: {direct_response.status_code}")  # Логирование статуса
 
-client = AsyncOpenAI(
-  base_url="https://openrouter.ai/api/v1",
-  api_key=ai_token,
-)
+            if direct_response.status_code == 200:
+                return direct_response.json()["choices"][0]["message"]["content"]
 
-async def ai_generate(text: str):
-  prompt = """
-      Ты — вежливый и дружелюбный собеседник. Отвечай спокойно и уважительно.
-      Теперь отвечай в этом стиле.
-      """
+        # 2. Если прямой запрос не сработал, пробуем через OpenRouter
+        openrouter_response = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"},
+            json={
+                "model": "deepseek/deepseek-chat",
+                "messages": [{"role": "user", "content": text}]
+            },
+            timeout=30.0
+        )
+        print(f"[DEBUG] Ответ OpenRouter: {openrouter_response.status_code}")
 
-  completion = await client.chat.completions.create(
-    model="deepseek/deepseek-chat",
-    messages=[
-      {"role": "system", "content": prompt},
-      {"role": "user", "content": text}
-    ]
-  )
+        return openrouter_response.json()["choices"][0]["message"]["content"]
 
-  print(completion)
-  return completion.choices[0].message.content
+    except Exception as e:
+        print(f"[ERROR] Ошибка генерации: {str(e)}")  # Логирование ошибок
+        return "⚠️ Ошибка: сервис временно недоступен"
